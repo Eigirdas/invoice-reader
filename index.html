@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Invoice Reader</title>
+<style>
+    body {
+        font-family: system-ui, -apple-system, sans-serif;
+        background: #f4f5f7;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        min-height: 100vh;
+        margin: 0;
+    }
+
+    .card {
+        background: #ffffff;
+        padding: 40px;
+        border-radius: 12px;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+        width: 100%;
+        max-width: 420px;
+        text-align: center;
+    }
+    a {
+        display: inline-block;
+        margin-bottom: 24px;
+    }
+
+    h1 {
+        margin: 0 0 8px;
+        font-size: 24px;
+        color: #1a1a2e;
+    }
+
+    p.subtitle {
+        margin: 0 0 28px;
+        color: #6b7280;
+        font-size: 14px;
+    }
+
+    input[type="file"] {
+        display: block;
+        width: 100%;
+        padding: 12px;
+        margin-bottom: 20px;
+        border: 2px dashed #cbd5e1;
+        border-radius: 8px;
+        background: #f9fafb;
+        box-sizing: border-box;
+        cursor: pointer;
+    }
+
+    button {
+        width: 100%;
+        padding: 12px;
+        background: #4f46e5;
+        color: #fff;
+        border: none;
+        border-radius: 8px;
+        font-size: 16px;
+        cursor: pointer;
+        transition: background 0.2s;
+    }
+
+    button:hover {
+        background: #4338ca;
+    }
+
+    #status {
+        margin-top: 20px;
+        font-size: 15px;
+        min-height: 20px;
+    }
+</style>
+</head>
+<body>
+
+<div class="card">
+    <h1>Invoice Reader</h1>
+    <p class="subtitle">Upload your invoices (PDF or image) to add them to your sheet.</p>
+    <a href="https://docs.google.com/spreadsheets/d/1imeiAjD-WaQgzeJLFYVQW4lkAydD5kgtPTQE14ZeR-Y" target="_blank" class="sheet-link">Open Google Sheet</a>
+
+    <form id="form" enctype="multipart/form-data" method="POST" action="http://127.0.0.1:8000/uploadfiles">
+        <input id="file" type="file" name="files" multiple>
+        <button type="submit">Submit</button>
+    </form>
+
+    <p id="status"></p>
+</div>
+
+<script>
+    const form = document.getElementById("form");
+    form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const fileInput = document.getElementById("file");
+        const formData = new FormData();
+        for (const file of fileInput.files) {
+            formData.append("files", file);
+        }
+        const status = document.getElementById("status");
+        status.textContent = "Processing...";
+        status.style.color = "#6b7280";
+        try {
+            const response = await fetch("http://127.0.0.1:8000/uploadfiles", {
+                method: "POST",
+                body: formData
+            });
+            const result = await response.json();
+            status.textContent = "Success! Processed " + result.processed;
+            status.style.color = "#16a34a";
+        } catch (error) {
+            status.textContent = "Error - Something went wrong";
+            status.style.color = "#dc2626";
+        }
+    });
+</script>
+
+</body>
+</html>
