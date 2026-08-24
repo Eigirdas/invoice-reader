@@ -30,7 +30,7 @@ def append_to_sheets(sorted_json):
             'values' : values 
         }
 
-        service.spreadsheets().values().append(spreadsheetId=spreadsheet_id, body=data, range=range_name, valueInputOption='USER_ENTERED').execute()
+        service.spreadsheets().values().append(spreadsheetId=spreadsheet_id, body=data, range=range_name, valueInputOption='RAW').execute()
 
 
 

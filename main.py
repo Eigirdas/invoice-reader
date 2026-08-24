@@ -46,7 +46,26 @@ async def upload(files: List[UploadFile] = File(...)):
     return {"Processed" : len(sorted_json)}
 
 
+EXTRACTION_PROMPT = """Extract these fields and return ONLY valid JSON with double quotes:
+{
+    "date": "",
+    "seller": "",
+    "price_excl_vat": 0.0,
+    "vat": 0.0,
+    "price_incl_vat": 0.0
+}
 
+DATE RULES (important):
+- Use the invoice ISSUE/transaction date — labelled "Išrašymo data", "Data", or "Kvito data". Do NOT use the print date labelled "Atspausdinta".
+- Output strictly as DD/MM/YYYY.
+- These invoices are from 2024 or later. Interpret 2-digit years accordingly: a date like "26-08-21" is YY-MM-DD = 21 August 2026, so output "21/08/2026". Never read it as the year 2021.
+- If a full 4-digit date (e.g. "2026-08-21") also appears on the document, use it to confirm the correct year.
+- If no date is found, return "date": null.
+
+SELLER RULES:
+- Use the seller/vendor company name (Lithuanian: "Pardavėjas"). If unclear, return "UNKNOWN".
+
+Return ONLY the JSON object, no other text."""
 """ For inside disk
 def process_files(files):
     for file in files:
@@ -74,9 +93,15 @@ def validate_json_data(data):
 
 
 def parse_date(date_str):
+    if not date_str:
+        print("Warning! Empty date")
+        return datetime.min
     for fmt in ('%d/%m/%Y', '%Y-%m-%d', '%Y/%m/%d', '%d-%m-%Y'):
         try:
-            return datetime.strptime(date_str,fmt)
+            parsed = datetime.strptime(date_str, fmt)
+            if parsed.year < 2020:
+                print(f"Warning! Suspicious year in '{date_str}'")
+            return parsed
         except ValueError:
             continue
     print(f"Warning! Could not parse '{date_str}'")
@@ -103,14 +128,7 @@ def read_pdf_file(file_bytes,file_name):
                         "type": "document",
                         "source": {"type": "file", "file_id": pdf_upload.id},
                     },
-                    {"type": "text", "text": """Extract these fields and return ONLY valid JSON with double quotes:
-                    {
-                        "date": "must be DD/MM/YYYY format, e.g. 27/07/2026",
-                        "seller": "",
-                        "price_excl_vat": 0.0,
-                        "vat": 0.0,
-                        "price_incl_vat": 0.0
-                    }"""},
+                    {"type": "text", "text": EXTRACTION_PROMPT},
                 ],
             }
         ],
@@ -144,14 +162,7 @@ def read_image_file(file_bytes):
                             "data": image_data,
                         }
                     },
-                    {"type": "text", "text": """Extract these fields and return ONLY valid JSON with double quotes:
-                    {
-                        "date": "must be DD/MM/YYYY format, e.g. 27/07/2026",
-                        "seller": "",
-                        "price_excl_vat": 0.0,
-                        "vat": 0.0,
-                        "price_incl_vat": 0.0
-                    }"""},
+                    {"type": "text", "text": EXTRACTION_PROMPT},
                 ],
             }
         ],
