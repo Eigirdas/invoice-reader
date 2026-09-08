@@ -14,7 +14,17 @@ from fastapi.responses import FileResponse
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
-from sheets import append_to_sheets
+from sheets import create_session_sheet
+from starlette.concurrency import run_in_threadpool
+import asyncio
+from fastapi import Header, HTTPException, Depends
+from cleanup import cleanup_old_sheets
+
+def verify_api_key(x_api_key: str = Header(...)):
+    with open("secrets/api_keys.txt") as f:
+        valid_keys = {line.strip() for line in f if line.strip()}
+    if x_api_key not in valid_keys:
+        raise HTTPException(status_code=401, detail="Invalid API key")
 
 
 client = anthropic.Anthropic()
@@ -26,24 +36,57 @@ llm = ChatAnthropic(
     api_key=ANTHROPIC_API_KEY
 )
 
+
+
 @app.get("/")
 def home():
     return FileResponse("index.html")
 
 @app.post("/uploadfiles")
-async def upload(files: List[UploadFile] = File(...)):
-    results = []
-    for file in files:
-        data = await file.read()
-        if file.filename.endswith('.pdf'):
-            results.append(read_pdf_file(data,file.filename))
-        else:
-            results.append(read_image_file(data))
+async def upload(files: List[UploadFile] = File(...), _: None = Depends(verify_api_key)):
+    file_bytes_list = [await f.read() for f in files]
 
-    results = validate_json_data(results)
-    sorted_json = sort_json_datafile(results)
-    append_to_sheets(sorted_json)
-    return {"Processed" : len(sorted_json)}
+    tasks = []
+    filenames = []
+    for data, file in zip(file_bytes_list, files):
+        filenames.append(file.filename)
+        if file.filename.endswith('.pdf'):
+            tasks.append(run_in_threadpool(read_pdf_file, data, file.filename))
+        else:
+            tasks.append(run_in_threadpool(read_image_file, data, file.content_type))
+
+    raw_results = await asyncio.gather(*tasks, return_exceptions=True)
+
+    successes = []
+    failures = []
+    for filename, result in zip(filenames, raw_results):
+        if isinstance(result, Exception):
+            print(f"Failed to process {filename}: {result}")
+            failures.append({"filename": filename, "error": str(result)})
+        else:
+            successes.append(result)
+
+    sheet_url = None
+    sheet_error = None
+    if successes:
+        successes = validate_json_data(successes)
+        sorted_json = sort_json_datafile(successes)
+        try:
+            sheet_url = await run_in_threadpool(create_session_sheet, sorted_json)
+        except Exception as e:
+            print(f"Failed to create session sheet: {e}")
+            print(f"Extracted data (recover manually): {sorted_json}")
+            sheet_error = str(e)
+    else:
+        sorted_json = []
+
+    return {
+        "Processed": len(sorted_json),
+        "sheet_url": sheet_url,
+        "sheet_error": sheet_error,
+        "extracted_data": sorted_json if sheet_error else None,
+        "failed": failures
+    }
 
 
 EXTRACTION_PROMPT = """Extract these fields and return ONLY valid JSON with double quotes:
@@ -138,10 +181,7 @@ def read_pdf_file(file_bytes,file_name):
     pdf_data = json.loads(pdf_response_text)
     return pdf_data
 
-
-
-
-def read_image_file(file_bytes):
+def read_image_file(file_bytes,media_type):
 
     # Upload the image file
     image_data = base64.standard_b64encode(file_bytes).decode("utf-8")
@@ -158,7 +198,7 @@ def read_image_file(file_bytes):
                         "type": "image",
                         "source": {
                             "type": "base64",
-                            "media_type": "image/jpeg",
+                            "media_type": media_type,
                             "data": image_data,
                         }
                     },
@@ -172,6 +212,21 @@ def read_image_file(file_bytes):
     photo_data = json.loads(photo_response_text)
     return photo_data
 
+async def periodic_cleanup():
+    while True:
+        try:
+            await run_in_threadpool(cleanup_old_sheets)
+        except Exception as e:
+            print(f"Cleanup failed: {e}")
+        await asyncio.sleep(3600)
+
+background_tasks = set()
+
+@app.on_event("startup")
+async def start_background_tasks():
+    task = asyncio.create_task(periodic_cleanup())
+    background_tasks.add(task)
+    task.add_done_callback(background_tasks.discard)
 
 
 

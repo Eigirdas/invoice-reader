@@ -1,4 +1,7 @@
-.env
-config.py
 invoice_secret.json
+client_secret.json
+token.json
+secrets/
 __pycache__/
+*.pyc
+.env

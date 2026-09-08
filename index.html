@@ -24,6 +24,22 @@
         max-width: 420px;
         text-align: center;
     }
+    .drop-zone {
+    padding: 30px 12px;
+    margin-bottom: 20px;
+    border: 2px dashed #cbd5e1;
+    border-radius: 8px;
+    background: #f9fafb;
+    cursor: pointer;
+    color: #6b7280;
+    font-size: 14px;
+    transition: border-color 0.2s, background 0.2s;
+    }
+
+    .drop-zone.dragover {
+        border-color: #4f46e5;
+        background: #eef2ff;
+    }
     a {
         display: inline-block;
         margin-bottom: 24px;
@@ -77,14 +93,16 @@
 </style>
 </head>
 <body>
-
 <div class="card">
     <h1>Invoice Reader</h1>
     <p class="subtitle">Upload your invoices (PDF or image) to add them to your sheet.</p>
-    <a href="https://docs.google.com/spreadsheets/d/1imeiAjD-WaQgzeJLFYVQW4lkAydD5kgtPTQE14ZeR-Y" target="_blank" class="sheet-link">Open Google Sheet</a>
+    <a href="#" target="_blank" id="sheet-link" style="display:none;">Open Google Sheet</a>
 
     <form id="form" enctype="multipart/form-data" method="POST" action="http://127.0.0.1:8000/uploadfiles">
-        <input id="file" type="file" name="files" multiple>
+        <div id="drop-zone" class="drop-zone">
+            <p>Drag & drop invoices here, or click to browse</p>
+        </div>
+        <input id="file" type="file" name="files" multiple style="display:none;">
         <button type="submit">Submit</button>
     </form>
 
@@ -93,9 +111,41 @@
 
 <script>
     const form = document.getElementById("form");
+    const fileInput = document.getElementById("file");
+    const dropZone = document.getElementById("drop-zone");
+    const submitButton = form.querySelector("button[type=submit]");
+
+    function updateDropZoneText() {
+        if (fileInput.files.length > 0) {
+            dropZone.querySelector("p").textContent = fileInput.files.length + " file(s) selected";
+        } else {
+            dropZone.querySelector("p").textContent = "Drag & drop invoices here, or click to browse";
+        }
+    }
+
+    dropZone.addEventListener("click", () => fileInput.click());
+    fileInput.addEventListener("change", updateDropZoneText);
+
+    dropZone.addEventListener("dragover", (event) => {
+        event.preventDefault();
+        dropZone.classList.add("dragover");
+    });
+
+    dropZone.addEventListener("dragleave", () => {
+        dropZone.classList.remove("dragover");
+    });
+
+    dropZone.addEventListener("drop", (event) => {
+        event.preventDefault();
+        dropZone.classList.remove("dragover");
+        fileInput.files = event.dataTransfer.files;
+        updateDropZoneText();
+    });
+
     form.addEventListener("submit", async (event) => {
         event.preventDefault();
-        const fileInput = document.getElementById("file");
+        submitButton.disabled = true;
+
         const formData = new FormData();
         for (const file of fileInput.files) {
             formData.append("files", file);
@@ -106,16 +156,38 @@
         try {
             const response = await fetch("http://127.0.0.1:8000/uploadfiles", {
                 method: "POST",
+                headers: {
+                    "X-API-Key" : "DaileDaile"
+                },
                 body: formData
             });
             const result = await response.json();
-            status.textContent = "Success! Processed " + result.processed;
-            status.style.color = "#16a34a";
+
+            if (result.sheet_error) {
+                status.textContent = "Extracted " + result.Processed + " invoice(s), but saving to Google Sheets failed. Contact support.";
+                status.style.color = "#dc2626";
+            } else {
+                let message = "Processed " + result.Processed;
+                if (result.failed && result.failed.length > 0) {
+                    message += ", " + result.failed.length + " failed";
+                }
+                status.textContent = message;
+                status.style.color = result.failed && result.failed.length > 0 ? "#d97706" : "#16a34a";
+            }
+
+            if (result.sheet_url) {
+                const sheetLink = document.getElementById("sheet-link");
+                sheetLink.href = result.sheet_url;
+                sheetLink.style.display = "inline-block";
+            }
         } catch (error) {
             status.textContent = "Error - Something went wrong";
             status.style.color = "#dc2626";
+        } finally {
+            submitButton.disabled = false;
         }
-    });
+    }
+    );
 </script>
 
 </body>
