@@ -98,7 +98,7 @@
     <p class="subtitle">Upload your invoices (PDF or image) to add them to your sheet.</p>
     <a href="#" target="_blank" id="sheet-link" style="display:none;">Open Google Sheet</a>
 
-    <form id="form" enctype="multipart/form-data" method="POST" action="http://127.0.0.1:8000/uploadfiles">
+     <form id="form" enctype="multipart/form-data" method="POST" action="/uploadfiles">
         <div id="drop-zone" class="drop-zone">
             <p>Drag & drop invoices here, or click to browse</p>
         </div>
@@ -154,7 +154,7 @@
         status.textContent = "Processing...";
         status.style.color = "#6b7280";
         try {
-            const response = await fetch("http://127.0.0.1:8000/uploadfiles", {
+            const response = await fetch("/uploadfiles", {
                 method: "POST",
                 headers: {
                     "X-API-Key" : "DaileDaile"
